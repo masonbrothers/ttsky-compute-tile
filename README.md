@@ -32,6 +32,22 @@ After resolving template changes, run the shared RTL sync from the parent repo
 so `src/compute_tile_tiny_tapeout_core.v` matches
 `rtl/compute_tile_tiny_tapeout_core.v`.
 
+## Tiny Tapeout HDL Checklist
+
+This project follows Tiny Tapeout's HDL "Important!" checklist:
+
+- the top module is uniquely named `tt_um_masonbrothers_compute_tile_top`;
+- `project.v` keeps the exact Tiny Tapeout port contract;
+- `src/config.json` keeps the template linter, clock, CTS, and output-buffer
+  safety settings unless a hardening issue explicitly requires a reviewed
+  change;
+- the cocotb protocol test exercises every externally visible output bit high
+  and low, including `uio_oe`, so synthesis should not optimize the smoke
+  datapath into a narrow unobservable fragment;
+- the parent CI runs a Yosys synthesis smoke with
+  `RTL_TOP=tt_um_masonbrothers_compute_tile_top` so synthesis warnings are
+  checked for the Tiny Tapeout wrapper.
+
 ## Pin Contract
 
 - `ui_in[7:5]`: opcode.
@@ -49,7 +65,7 @@ parallel byte lane, so it should be tested with no external SPI RAM, QSPI, I2C,
 or UART Pmod attached to the bidirectional connector.
 
 The canonical pin-mode plan is [docs/pinout-plan.md](docs/pinout-plan.md). It
-covers the current byte-lane smoke mode plus the planned UART console,
+covers the current byte-lane smoke mode, the implemented UART debug console,
 RP2040-backed SPI RAM mailbox, SPI target, QSPI, I2C, and LED/debug mappings.
 The status/error/LED reference is
 [docs/status-led-reference.md](docs/status-led-reference.md).
@@ -74,10 +90,13 @@ design without putting USB in the RTL. The practical shape is an SPI-RAM
 mailbox: host software talks USB to the RP2040, RP2040 firmware exposes a small
 SPI RAM window, and the Compute Tile RTL polls command/status/result slots over SPI.
 
-UART-to-USB should be a separate serial-console variant using Tiny Tapeout's
-recommended pair `ui_in[3]` as RX and `uo_out[4]` as TX, or the alternate pair
-`ui_in[1]` as RX and `uo_out[0]` as TX. USB remains on the demo-board RP2040
-side; the user RTL should expose UART or SPI pins, not implement a USB PHY.
+UART-to-USB debug uses Tiny Tapeout's recommended pair `ui_in[3]` as RX and
+`uo_out[4]` as TX. USB remains on the demo-board RP2040 side; the user RTL
+exposes UART pins, not a USB PHY. UART mode auto-enables when `ui_in[3]` is
+sampled high on the first enabled clock after reset, matching an idle UART RX
+line, and can also be enabled from the byte-lane protocol with `GATE`,
+`imm=5'h0e`, and `uio_in=8'hc7`. When UART mode is enabled, `uo_out[4]` is the
+UART TX line rather than the status/result bit.
 
 I2C should be treated as a later low-speed management option. It needs
 open-drain-style behavior: drive `SCL`/`SDA` low or release them with `uio_oe=0`,
@@ -88,7 +107,7 @@ instead of driving push-pull highs.
 | Opcode | Name | Behavior |
 | --- | --- | --- |
 | `000` | `STATUS` | Public status; `uio_out` selects capability, trace, op count, or error count. |
-| `001` | `GATE` | Unlock with `ui_in[4:0]=5'h1a` and `uio_in=8'ha5`; relock with `5'h05` and `8'h5a`. |
+| `001` | `GATE` | Unlock with `5'h1a`/`8'ha5`; relock with `5'h05`/`8'h5a`; enable UART with `5'h0e`/`8'hc7`; disable UART with `5'h0f`/`8'hc7`. |
 | `010` | `LOAD_A` | Protected operand A load from `uio_in`. |
 | `011` | `LOAD_B` | Protected operand B load from `uio_in`. |
 | `100` | `COMPUTE` | Protected ADD, MUL-low, MAX, ReLU, 2-lane nibble dot, or XOR. |
@@ -117,7 +136,8 @@ make
 ```
 
 The cocotb test covers reset status, locked rejection, unlock/relock, operand
-loads, ADD, nibble-dot, compute disable, self-test, and `uio_oe` direction.
+loads, ADD, all byte compute operations, compute disable, self-test, `uio_oe`
+direction, and the UART debug console on `ui_in[3]`/`uo_out[4]`.
 
 Keep Tiny Tapeout-facing cocotb tests in `ttsky-compute-tile/test` so the template
 CI and hardening flow can run them. Keep parent-repo guard tests in

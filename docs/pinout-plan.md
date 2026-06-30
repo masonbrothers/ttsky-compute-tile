@@ -40,7 +40,7 @@ same time.
 | Mode | Primary value | Pin cost | Status |
 | --- | --- | --- | --- |
 | V0 byte-lane smoke | Fastest deterministic bring-up and cocotb testing | all `ui_in`, all `uo_out`, all `uio` as byte lanes | implemented |
-| UART console | USB-visible text/register console through RP2040 | one `ui_in`, one `uo_out` | planned |
+| UART console | USB-visible byte/debug console through RP2040 | `ui_in[3]`, `uo_out[4]` | implemented |
 | SPI RAM mailbox | USB-to-RP2040-to-SPI command/result memory window | `uio[0:3]` | planned, preferred next transport |
 | SPI target | RP2040 or external host directly clocks commands into RTL | `uio[0:3]` | optional alternate, conflicts with SPI RAM role |
 | QSPI flash/PSRAM | larger external memory experiment | all `uio[7:0]` | later |
@@ -59,11 +59,11 @@ connector.
 | `ui_in[0]` | `cmd_imm[0]` | immediate/select bit 0 |
 | `ui_in[1]` | `cmd_imm[1]` | immediate/select bit 1 |
 | `ui_in[2]` | `cmd_imm[2]` | immediate/select bit 2 |
-| `ui_in[3]` | `cmd_imm[3]` | immediate/select bit 3; reserve for UART RX in UART variant |
+| `ui_in[3]` | `cmd_imm[3]` | immediate/select bit 3; UART RX in UART mode |
 | `ui_in[4]` | `cmd_imm[4]` | immediate/select bit 4 |
 | `ui_in[5]` | `cmd_opcode[0]` | opcode bit 0 |
 | `ui_in[6]` | `cmd_opcode[1]` | opcode bit 1 |
-| `ui_in[7]` | `cmd_opcode[2]` | opcode bit 2; alternate UART RX in UART variant |
+| `ui_in[7]` | `cmd_opcode[2]` | opcode bit 2; alternate UART RX reserved for a future variant |
 
 ### `uo_out` Output Pins
 
@@ -77,7 +77,7 @@ LEDs during manual bring-up.
 | `uo_out[1]` | `status_or_result[1]` | unlocked or result bit 1 |
 | `uo_out[2]` | `status_or_result[2]` | result-valid or result bit 2 |
 | `uo_out[3]` | `status_or_result[3]` | error-sticky or result bit 3 |
-| `uo_out[4]` | `status_or_result[4]` | self-test pass or result bit 4; preferred UART TX in UART variant |
+| `uo_out[4]` | `status_or_result[4]` | self-test pass or result bit 4; UART TX in UART mode |
 | `uo_out[5]` | `status_or_result[5]` | compute-disabled/fault mode or result bit 5 |
 | `uo_out[6]` | `status_or_result[6]` | enable/activity or result bit 6 |
 | `uo_out[7]` | `status_or_result[7]` | trace parity/heartbeat or result bit 7 |
@@ -99,7 +99,7 @@ read-style commands and sets `uio_oe=8'hff`; it releases the lane with
 | `uio[6]` | `data_lane[6]` | QSPI RAM A `CS` or lower-row protocol pin |
 | `uio[7]` | `data_lane[7]` | QSPI RAM B `CS` or lower-row protocol pin |
 
-## Planned UART Console Variant
+## Implemented UART Console Variant
 
 Use UART for the smallest USB-visible control path. The RP2040 handles USB; the
 RTL only exposes UART RX/TX.
@@ -111,16 +111,33 @@ Preferred mapping:
 | `ui_in[3]` | input to RTL | UART RX |
 | `uo_out[4]` | output from RTL | UART TX |
 
-Alternate mapping:
+UART mode auto-enables when `ui_in[3]` is sampled high on the first enabled
+clock after reset, which matches an idle UART RX line from the demo-board
+RP2040. It can also be enabled from the byte-lane protocol with `GATE`,
+`imm=5'h0e`, and `uio_in=8'hc7`; it can be disabled with `GATE`, `imm=5'h0f`,
+and `uio_in=8'hc7`.
 
-| Pin | Direction | Signal |
+Console commands are byte-oriented:
+
+| Byte | Response | Effect |
 | --- | --- | --- |
-| `ui_in[1]` | input to RTL | UART RX |
-| `uo_out[0]` | output from RTL | UART TX |
+| `?`, `S`, `s` | status byte | Read public status. |
+| `C`, `c` | capability byte | Read capability. |
+| `U`, `u` | `0x55` | Unlock protected operations. |
+| `L`, `l` | `0x0f` | Relock protected operations. |
+| `A`, `a` then one byte | `A`, then `A` | Load operand A. |
+| `B`, `b` then one byte | `B`, then `B` | Load operand B. |
+| `0`..`5` | result or error code | Run ADD, MUL-low, MAX, ReLU, nibble-dot, or XOR. |
+| `R`, `r` | result or `LOCKED_ERR` | Read the result register. |
+| `T`, `t` | trace byte | Read trace checksum. |
+| `O`, `o` | op count | Read operation count. |
+| `E`, `e` | error count | Read error count. |
+| `F`, `f` then one byte | `F`, then `F` | Load fault-control byte. |
+| `P`, `p` | `PASS_CODE` or `FAIL_CODE` | Run self-test. |
 
-When UART is enabled, reserve the chosen TX pin and keep only the remaining
-`uo_out` pins as LEDs/status. Do not use the chosen RX bit as part of the V0
-parallel command byte.
+When UART is enabled, `uo_out[4]` is reserved for TX and the remaining `uo_out`
+pins continue to show the selected status/result bits. Do not rely on bit 4 of
+the parallel result/status byte while UART mode is active.
 
 ## Planned SPI RAM Mailbox Variant
 
@@ -195,7 +212,7 @@ Bottom-row mapping is `uio[4]`/`uio[5]`/`uio[6]`/`uio[7]` with the same roles.
 ## Decision Rules
 
 1. Keep V0 byte-lane smoke as the deterministic no-Pmod proof.
-2. Add UART only when the goal is human-readable USB console bring-up.
+2. Use UART mode when the goal is USB-visible byte/debug console bring-up.
 3. Add SPI RAM mailbox next when the goal is higher-value host command/result
    buffering or RP2040-backed memory.
 4. Use `uo_out` LEDs for observability, but reserve `uo_out[4]` or `uo_out[0]`
