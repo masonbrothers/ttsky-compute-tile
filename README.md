@@ -10,6 +10,8 @@ The top module is `tt_um_masonbrothers_compute_tile_top`, following Tiny
 Tapeout's `tt_um_*` naming convention and exact 8-input, 8-output,
 8-bidirectional port shape.
 
+Latest hardened GDS viewer: https://compute-tile.masonbrothers.ca/
+
 ## Template Lineage
 
 This repository is intentionally based on the upstream Tiny Tapeout SKY Verilog
