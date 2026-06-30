@@ -27,11 +27,11 @@ pinout:
   ui[0]: "cmd_imm[0]"
   ui[1]: "cmd_imm[1]"
   ui[2]: "cmd_imm[2]"
-  ui[3]: "cmd_imm[3] / uart_rx"
+  ui[3]: "cmd_imm[3]"
   ui[4]: "cmd_imm[4]"
   ui[5]: "cmd_opcode[0]"
   ui[6]: "cmd_opcode[1]"
-  ui[7]: "cmd_opcode[2] / uart_rx_alt"
+  ui[7]: "cmd_opcode[2]"
 
   # Outputs
   uo[0]: "status_or_result[0] / led_alive / uart_tx_alt"

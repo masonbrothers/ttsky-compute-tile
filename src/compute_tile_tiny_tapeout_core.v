@@ -11,9 +11,7 @@
 // - ui_in:   8-bit command/immediate byte.
 // - uo_out:  8-bit status/result byte.
 // - uio_*:   8-bit shared data lane, only driven for read-style commands.
-module compute_tile_tiny_tapeout_core #(
-    parameter integer UART_CLKS_PER_BIT = 104
-) (
+module compute_tile_tiny_tapeout_core (
     input  wire       clk,
     input  wire       rst_n,
     input  wire       ena,
@@ -35,36 +33,15 @@ module compute_tile_tiny_tapeout_core #(
 
   localparam [4:0] IMM_UNLOCK = 5'h1a;
   localparam [4:0] IMM_LOCK   = 5'h05;
-  localparam [4:0] IMM_UART_ON  = 5'h0e;
-  localparam [4:0] IMM_UART_OFF = 5'h0f;
 
   localparam [7:0] KEY_UNLOCK = 8'ha5;
   localparam [7:0] KEY_LOCK   = 8'h5a;
-  localparam [7:0] KEY_UART_MODE = 8'hc7;
 
   localparam [7:0] CAPABILITY = 8'b0111_1111;
   localparam [7:0] LOCKED_ERR = 8'he1;
   localparam [7:0] FAULT_ERR  = 8'he2;
   localparam [7:0] PASS_CODE  = 8'hc3;
   localparam [7:0] FAIL_CODE  = 8'h3c;
-
-  localparam integer UART_HALF_CLKS = UART_CLKS_PER_BIT / 2;
-  localparam [31:0] UART_BIT_LAST = UART_CLKS_PER_BIT - 1;
-  localparam [31:0] UART_HALF_LAST = UART_HALF_CLKS - 1;
-  localparam [1:0] UART_RX_IDLE  = 2'd0;
-  localparam [1:0] UART_RX_START = 2'd1;
-  localparam [1:0] UART_RX_DATA  = 2'd2;
-  localparam [1:0] UART_RX_STOP  = 2'd3;
-
-  localparam [1:0] UART_LOAD_NONE  = 2'd0;
-  localparam [1:0] UART_LOAD_A     = 2'd1;
-  localparam [1:0] UART_LOAD_B     = 2'd2;
-  localparam [1:0] UART_LOAD_FAULT = 2'd3;
-
-  localparam [7:0] UART_ACK_A     = 8'h41;
-  localparam [7:0] UART_ACK_B     = 8'h42;
-  localparam [7:0] UART_ACK_FAULT = 8'h46;
-  localparam [7:0] UART_BAD_CMD   = 8'h3f;
 
   wire [2:0] opcode = ui_in[7:5];
   wire [4:0] imm    = ui_in[4:0];
@@ -84,27 +61,6 @@ module compute_tile_tiny_tapeout_core #(
   reg [7:0]  error_count_q;
   reg [7:0]  last_cmd_q;
 
-  reg        boot_sampled_q;
-  reg        uart_mode_q;
-  reg [1:0]  uart_load_state_q;
-
-  reg        uart_rx_meta_q;
-  reg        uart_rx_sync_q;
-  reg [1:0]  uart_rx_state_q;
-  reg [15:0] uart_rx_count_q;
-  reg [3:0]  uart_rx_bit_q;
-  reg [7:0]  uart_rx_shift_q;
-  reg        uart_rx_ready_q;
-  reg [7:0]  uart_rx_byte_q;
-
-  reg        uart_tx_q;
-  reg        uart_tx_busy_q;
-  reg        uart_tx_pending_q;
-  reg [7:0]  uart_tx_pending_byte_q;
-  reg [7:0]  uart_tx_shift_q;
-  reg [15:0] uart_tx_count_q;
-  reg [3:0]  uart_tx_bit_q;
-
   reg [7:0]  uo_out_r;
   reg [7:0]  uio_out_r;
 
@@ -115,9 +71,7 @@ module compute_tile_tiny_tapeout_core #(
                         (opcode == OPC_READ_RESULT) ||
                         (opcode == OPC_SELF_TEST);
 
-  wire [7:0] uo_out_uart_mux = {uo_out_r[7:5], uart_tx_q, uo_out_r[3:0]};
-
-  assign uo_out = ena ? (uart_mode_q ? uo_out_uart_mux : uo_out_r) : 8'h00;
+  assign uo_out = ena ? uo_out_r : 8'h00;
   assign uio_out = ena ? uio_out_r : 8'h00;
   assign uio_oe = (ena && read_style_cmd) ? 8'hff : 8'h00;
 
@@ -244,122 +198,9 @@ module compute_tile_tiny_tapeout_core #(
       cycle_count_q <= 8'h00;
       error_count_q <= 8'h00;
       last_cmd_q <= 8'h00;
-      boot_sampled_q <= 1'b0;
-      uart_mode_q <= 1'b0;
-      uart_load_state_q <= UART_LOAD_NONE;
-      uart_rx_meta_q <= 1'b1;
-      uart_rx_sync_q <= 1'b1;
-      uart_rx_state_q <= UART_RX_IDLE;
-      uart_rx_count_q <= 16'd0;
-      uart_rx_bit_q <= 4'd0;
-      uart_rx_shift_q <= 8'h00;
-      uart_rx_ready_q <= 1'b0;
-      uart_rx_byte_q <= 8'h00;
-      uart_tx_q <= 1'b1;
-      uart_tx_busy_q <= 1'b0;
-      uart_tx_pending_q <= 1'b0;
-      uart_tx_pending_byte_q <= 8'h00;
-      uart_tx_shift_q <= 8'h00;
-      uart_tx_count_q <= 16'd0;
-      uart_tx_bit_q <= 4'd0;
     end else if (ena) begin
       cycle_count_q <= cycle_count_q + 8'h01;
       last_cmd_q <= ui_in;
-      uart_rx_meta_q <= ui_in[3];
-      uart_rx_sync_q <= uart_rx_meta_q;
-      uart_rx_ready_q <= 1'b0;
-
-      if (!boot_sampled_q) begin
-        uart_mode_q <= ui_in[3];
-        boot_sampled_q <= 1'b1;
-      end
-
-      if (uart_mode_q) begin
-        case (uart_rx_state_q)
-          UART_RX_IDLE: begin
-            if (!uart_rx_sync_q) begin
-              uart_rx_state_q <= UART_RX_START;
-              uart_rx_count_q <= UART_HALF_LAST[15:0];
-            end
-          end
-          UART_RX_START: begin
-            if (uart_rx_count_q == 16'd0) begin
-              if (!uart_rx_sync_q) begin
-                uart_rx_state_q <= UART_RX_DATA;
-                uart_rx_count_q <= UART_BIT_LAST[15:0];
-                uart_rx_bit_q <= 4'd0;
-              end else begin
-                uart_rx_state_q <= UART_RX_IDLE;
-              end
-            end else begin
-              uart_rx_count_q <= uart_rx_count_q - 16'd1;
-            end
-          end
-          UART_RX_DATA: begin
-            if (uart_rx_count_q == 16'd0) begin
-              uart_rx_shift_q <= {uart_rx_sync_q, uart_rx_shift_q[7:1]};
-              uart_rx_count_q <= UART_BIT_LAST[15:0];
-              if (uart_rx_bit_q == 4'd7) begin
-                uart_rx_state_q <= UART_RX_STOP;
-              end else begin
-                uart_rx_bit_q <= uart_rx_bit_q + 4'd1;
-              end
-            end else begin
-              uart_rx_count_q <= uart_rx_count_q - 16'd1;
-            end
-          end
-          UART_RX_STOP: begin
-            if (uart_rx_count_q == 16'd0) begin
-              uart_rx_state_q <= UART_RX_IDLE;
-              if (uart_rx_sync_q) begin
-                uart_rx_byte_q <= uart_rx_shift_q;
-                uart_rx_ready_q <= 1'b1;
-              end
-            end else begin
-              uart_rx_count_q <= uart_rx_count_q - 16'd1;
-            end
-          end
-          default: begin
-            uart_rx_state_q <= UART_RX_IDLE;
-          end
-        endcase
-
-        if (uart_tx_busy_q) begin
-          if (uart_tx_count_q == 16'd0) begin
-            uart_tx_count_q <= UART_BIT_LAST[15:0];
-            if (uart_tx_bit_q < 4'd8) begin
-              uart_tx_q <= uart_tx_shift_q[0];
-              uart_tx_shift_q <= {1'b0, uart_tx_shift_q[7:1]};
-              uart_tx_bit_q <= uart_tx_bit_q + 4'd1;
-            end else if (uart_tx_bit_q == 4'd8) begin
-              uart_tx_q <= 1'b1;
-              uart_tx_bit_q <= 4'd9;
-            end else begin
-              uart_tx_q <= 1'b1;
-              uart_tx_busy_q <= 1'b0;
-            end
-          end else begin
-            uart_tx_count_q <= uart_tx_count_q - 16'd1;
-          end
-        end else if (uart_tx_pending_q) begin
-          uart_tx_q <= 1'b0;
-          uart_tx_shift_q <= uart_tx_pending_byte_q;
-          uart_tx_count_q <= UART_BIT_LAST[15:0];
-          uart_tx_bit_q <= 4'd0;
-          uart_tx_busy_q <= 1'b1;
-          uart_tx_pending_q <= 1'b0;
-        end else begin
-          uart_tx_q <= 1'b1;
-        end
-      end else begin
-        uart_rx_state_q <= UART_RX_IDLE;
-        uart_rx_count_q <= 16'd0;
-        uart_rx_bit_q <= 4'd0;
-        uart_load_state_q <= UART_LOAD_NONE;
-        uart_tx_q <= 1'b1;
-        uart_tx_busy_q <= 1'b0;
-        uart_tx_pending_q <= 1'b0;
-      end
 
       if (protected_cmd && !unlocked_q) begin
         error_sticky_q <= 1'b1;
@@ -375,12 +216,6 @@ module compute_tile_tiny_tapeout_core #(
               trace_q <= trace_next(trace_q, ui_in, uio_in);
             end else if ((imm == IMM_LOCK) && (uio_in == KEY_LOCK)) begin
               unlocked_q <= 1'b0;
-              trace_q <= trace_next(trace_q, ui_in, uio_in);
-            end else if ((imm == IMM_UART_ON) && (uio_in == KEY_UART_MODE)) begin
-              uart_mode_q <= 1'b1;
-              trace_q <= trace_next(trace_q, ui_in, uio_in);
-            end else if ((imm == IMM_UART_OFF) && (uio_in == KEY_UART_MODE)) begin
-              uart_mode_q <= 1'b0;
               trace_q <= trace_next(trace_q, ui_in, uio_in);
             end else begin
               error_sticky_q <= 1'b1;
@@ -440,149 +275,6 @@ module compute_tile_tiny_tapeout_core #(
         endcase
       end
 
-      if (uart_mode_q && uart_rx_ready_q) begin
-        if (uart_load_state_q != UART_LOAD_NONE) begin
-          if (!unlocked_q) begin
-            error_sticky_q <= 1'b1;
-            error_count_q <= error_count_q + 8'h01;
-            trace_q <= trace_next(trace_q, uart_rx_byte_q, LOCKED_ERR);
-            uart_tx_pending_byte_q <= LOCKED_ERR;
-            uart_tx_pending_q <= 1'b1;
-          end else begin
-            case (uart_load_state_q)
-              UART_LOAD_A: begin
-                operand_a_q <= uart_rx_byte_q;
-                result_valid_q <= 1'b0;
-                trace_q <= trace_next(trace_q, 8'h41, uart_rx_byte_q);
-                uart_tx_pending_byte_q <= UART_ACK_A;
-                uart_tx_pending_q <= 1'b1;
-              end
-              UART_LOAD_B: begin
-                operand_b_q <= uart_rx_byte_q;
-                result_valid_q <= 1'b0;
-                trace_q <= trace_next(trace_q, 8'h42, uart_rx_byte_q);
-                uart_tx_pending_byte_q <= UART_ACK_B;
-                uart_tx_pending_q <= 1'b1;
-              end
-              UART_LOAD_FAULT: begin
-                compute_disabled_q <= uart_rx_byte_q[0];
-                if (uart_rx_byte_q[1]) begin
-                  error_sticky_q <= 1'b1;
-                  error_count_q <= error_count_q + 8'h01;
-                end
-                if (uart_rx_byte_q[7]) begin
-                  error_sticky_q <= 1'b0;
-                  error_count_q <= 8'h00;
-                end
-                trace_q <= trace_next(trace_q, 8'h46, uart_rx_byte_q);
-                uart_tx_pending_byte_q <= UART_ACK_FAULT;
-                uart_tx_pending_q <= 1'b1;
-              end
-              default: begin
-                uart_tx_pending_byte_q <= UART_BAD_CMD;
-                uart_tx_pending_q <= 1'b1;
-              end
-            endcase
-          end
-          uart_load_state_q <= UART_LOAD_NONE;
-        end else begin
-          case (uart_rx_byte_q)
-            8'h3f, 8'h53, 8'h73: begin // ?, S, s
-              uart_tx_pending_byte_q <= status_byte;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h43, 8'h63: begin // C, c
-              uart_tx_pending_byte_q <= CAPABILITY;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h52, 8'h72: begin // R, r
-              uart_tx_pending_byte_q <= unlocked_q ? result_q : LOCKED_ERR;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h54, 8'h74: begin // T, t
-              uart_tx_pending_byte_q <= trace_q;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h4f, 8'h6f: begin // O, o
-              uart_tx_pending_byte_q <= op_count_q;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h45, 8'h65: begin // E, e
-              uart_tx_pending_byte_q <= error_count_q;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h55, 8'h75: begin // U, u
-              unlocked_q <= 1'b1;
-              trace_q <= trace_next(trace_q, uart_rx_byte_q, 8'h55);
-              uart_tx_pending_byte_q <= 8'h55;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h4c, 8'h6c: begin // L, l
-              unlocked_q <= 1'b0;
-              trace_q <= trace_next(trace_q, uart_rx_byte_q, 8'h0f);
-              uart_tx_pending_byte_q <= 8'h0f;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h41, 8'h61: begin // A, a
-              uart_load_state_q <= UART_LOAD_A;
-              uart_tx_pending_byte_q <= UART_ACK_A;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h42, 8'h62: begin // B, b
-              uart_load_state_q <= UART_LOAD_B;
-              uart_tx_pending_byte_q <= UART_ACK_B;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h46, 8'h66: begin // F, f
-              uart_load_state_q <= UART_LOAD_FAULT;
-              uart_tx_pending_byte_q <= UART_ACK_FAULT;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h50, 8'h70: begin // P, p
-              self_test_pass_q <= self_test_ok();
-              result_q <= self_test_ok() ? PASS_CODE : FAIL_CODE;
-              result_valid_q <= 1'b1;
-              op_count_q <= op_count_q + 8'h01;
-              trace_q <= trace_next(trace_q, uart_rx_byte_q, self_test_ok() ? PASS_CODE : FAIL_CODE);
-              uart_tx_pending_byte_q <= self_test_ok() ? PASS_CODE : FAIL_CODE;
-              uart_tx_pending_q <= 1'b1;
-            end
-            8'h30, 8'h31, 8'h32, 8'h33, 8'h34, 8'h35: begin // 0..5
-              if (!unlocked_q) begin
-                error_sticky_q <= 1'b1;
-                error_count_q <= error_count_q + 8'h01;
-                trace_q <= trace_next(trace_q, uart_rx_byte_q, LOCKED_ERR);
-                uart_tx_pending_byte_q <= LOCKED_ERR;
-                uart_tx_pending_q <= 1'b1;
-              end else if (compute_disabled_q) begin
-                error_sticky_q <= 1'b1;
-                error_count_q <= error_count_q + 8'h01;
-                trace_q <= trace_next(trace_q, uart_rx_byte_q, FAULT_ERR);
-                uart_tx_pending_byte_q <= FAULT_ERR;
-                uart_tx_pending_q <= 1'b1;
-              end else begin
-                result_q <= compute_result(uart_rx_byte_q[2:0], operand_a_q, operand_b_q);
-                result_valid_q <= 1'b1;
-                op_count_q <= op_count_q + 8'h01;
-                trace_q <= trace_next(
-                  trace_q,
-                  uart_rx_byte_q,
-                  compute_result(uart_rx_byte_q[2:0], operand_a_q, operand_b_q)
-                );
-                uart_tx_pending_byte_q <= compute_result(uart_rx_byte_q[2:0], operand_a_q, operand_b_q);
-                uart_tx_pending_q <= 1'b1;
-              end
-            end
-            default: begin
-              error_sticky_q <= 1'b1;
-              error_count_q <= error_count_q + 8'h01;
-              trace_q <= trace_next(trace_q, uart_rx_byte_q, UART_BAD_CMD);
-              uart_tx_pending_byte_q <= UART_BAD_CMD;
-              uart_tx_pending_q <= 1'b1;
-            end
-          endcase
-        end
-      end
     end
   end
 

@@ -17,11 +17,9 @@ OPC_SELF_TEST = 7
 
 IMM_UNLOCK = 0x1A
 IMM_LOCK = 0x05
-IMM_UART_ON = 0x0E
 
 KEY_UNLOCK = 0xA5
 KEY_LOCK = 0x5A
-KEY_UART_MODE = 0xC7
 
 CAPABILITY = 0x7F
 LOCKED_ERR = 0xE1
@@ -29,8 +27,6 @@ FAULT_ERR = 0xE2
 PASS_CODE = 0xC3
 FAIL_CODE = 0x3C
 POST_CLOCK_SETTLE_NS = 100
-UART_CLKS_PER_BIT = 104
-UART_RX_HIGH = 0x08
 
 
 def cmd(opcode, imm=0):
@@ -74,47 +70,6 @@ async def load_compute_read(dut, op, operand_a, operand_b):
     compute_value = value(dut.uo_out)
     await cycle(dut, cmd(OPC_READ_RESULT, 0), 0)
     return compute_value, value(dut.uio_out)
-
-
-def drive_uart_rx(dut, bit):
-    dut.ui_in.value = UART_RX_HIGH if bit else 0
-
-
-async def uart_write_byte(dut, byte):
-    drive_uart_rx(dut, 1)
-    await ClockCycles(dut.clk, 2)
-    drive_uart_rx(dut, 0)
-    await ClockCycles(dut.clk, UART_CLKS_PER_BIT)
-    for bit_index in range(8):
-        drive_uart_rx(dut, (byte >> bit_index) & 1)
-        await ClockCycles(dut.clk, UART_CLKS_PER_BIT)
-    drive_uart_rx(dut, 1)
-    await ClockCycles(dut.clk, UART_CLKS_PER_BIT)
-    await Timer(POST_CLOCK_SETTLE_NS, unit="ns")
-
-
-async def uart_read_byte(dut):
-    for _ in range(UART_CLKS_PER_BIT * 20):
-        if ((value(dut.uo_out) >> 4) & 1) == 0:
-            break
-        await ClockCycles(dut.clk, 1)
-    else:
-        raise AssertionError("UART TX start bit was not observed")
-
-    await ClockCycles(dut.clk, UART_CLKS_PER_BIT + (UART_CLKS_PER_BIT // 2))
-    received = 0
-    for bit_index in range(8):
-        received |= (((value(dut.uo_out) >> 4) & 1) << bit_index)
-        await ClockCycles(dut.clk, UART_CLKS_PER_BIT)
-
-    await ClockCycles(dut.clk, UART_CLKS_PER_BIT)
-    assert ((value(dut.uo_out) >> 4) & 1) == 1
-    return received
-
-
-async def uart_exchange(dut, byte):
-    await uart_write_byte(dut, byte)
-    return await uart_read_byte(dut)
 
 
 @cocotb.test()
@@ -225,23 +180,6 @@ async def test_project(dut):
     observe(dut, observed)
     await cycle(dut, cmd(OPC_READ_RESULT), 0)
     assert value(dut.uo_out) == LOCKED_ERR
-    observe(dut, observed)
-
-    dut._log.info("UART console uses ui_in[3]/uo_out[4] for USB-visible debug")
-    await cycle(dut, cmd(OPC_GATE, IMM_UART_ON), KEY_UART_MODE)
-    assert ((value(dut.uo_out) >> 4) & 1) == 1
-    observe(dut, observed)
-
-    drive_uart_rx(dut, 1)
-    await ClockCycles(dut.clk, UART_CLKS_PER_BIT)
-    assert await uart_exchange(dut, ord("U")) == 0x55
-    assert await uart_exchange(dut, ord("A")) == ord("A")
-    assert await uart_exchange(dut, 0x12) == ord("A")
-    assert await uart_exchange(dut, ord("B")) == ord("B")
-    assert await uart_exchange(dut, 0x34) == ord("B")
-    assert await uart_exchange(dut, ord("0")) == 0x46
-    assert await uart_exchange(dut, ord("R")) == 0x46
-    assert await uart_exchange(dut, ord("P")) == PASS_CODE
     observe(dut, observed)
 
     dut._log.info("All externally visible lanes have full bit coverage")

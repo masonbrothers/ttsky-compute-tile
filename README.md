@@ -41,12 +41,27 @@ This project follows Tiny Tapeout's HDL "Important!" checklist:
 - `src/config.json` keeps the template linter, clock, CTS, and output-buffer
   safety settings unless a hardening issue explicitly requires a reviewed
   change;
+- reset drives all internal control, counter, trace, result, and status
+  registers to deterministic safe values before any command is accepted;
 - the cocotb protocol test exercises every externally visible output bit high
   and low, including `uio_oe`, so synthesis should not optimize the smoke
   datapath into a narrow unobservable fragment;
 - the parent CI runs a Yosys synthesis smoke with
   `RTL_TOP=tt_um_masonbrothers_compute_tile_top` so synthesis warnings are
   checked for the Tiny Tapeout wrapper.
+
+## Reset / Unknown-State Contract
+
+The design must not rely on simulator or silicon power-up values. Hosts and
+tests assert `rst_n=0` before use, then release reset before the first command.
+While disabled or held in reset, `uo_out`, `uio_out`, and `uio_oe` are expected
+to be zero; after reset, public status must be readable while protected
+commands remain locked.
+
+All internal `*_q` state in `compute_tile_tiny_tapeout_core.v` is reset
+explicitly. Any intentional post-reset strap sampling, such as a UART idle-level
+strap or a future SPI-mode strap, must be documented with the pin contract and
+covered by the cocotb protocol test.
 
 ## Pin Contract
 
@@ -65,7 +80,7 @@ parallel byte lane, so it should be tested with no external SPI RAM, QSPI, I2C,
 or UART Pmod attached to the bidirectional connector.
 
 The canonical pin-mode plan is [docs/pinout-plan.md](docs/pinout-plan.md). It
-covers the current byte-lane smoke mode, the implemented UART debug console,
+covers the current byte-lane smoke mode plus the planned UART console,
 RP2040-backed SPI RAM mailbox, SPI target, QSPI, I2C, and LED/debug mappings.
 The status/error/LED reference is
 [docs/status-led-reference.md](docs/status-led-reference.md).
@@ -90,13 +105,10 @@ design without putting USB in the RTL. The practical shape is an SPI-RAM
 mailbox: host software talks USB to the RP2040, RP2040 firmware exposes a small
 SPI RAM window, and the Compute Tile RTL polls command/status/result slots over SPI.
 
-UART-to-USB debug uses Tiny Tapeout's recommended pair `ui_in[3]` as RX and
-`uo_out[4]` as TX. USB remains on the demo-board RP2040 side; the user RTL
-exposes UART pins, not a USB PHY. UART mode auto-enables when `ui_in[3]` is
-sampled high on the first enabled clock after reset, matching an idle UART RX
-line, and can also be enabled from the byte-lane protocol with `GATE`,
-`imm=5'h0e`, and `uio_in=8'hc7`. When UART mode is enabled, `uo_out[4]` is the
-UART TX line rather than the status/result bit.
+UART-to-USB should be a separate serial-console variant using Tiny Tapeout's
+recommended pair `ui_in[3]` as RX and `uo_out[4]` as TX, or the alternate pair
+`ui_in[1]` as RX and `uo_out[0]` as TX. USB remains on the demo-board RP2040
+side; the user RTL should expose UART or SPI pins, not implement a USB PHY.
 
 I2C should be treated as a later low-speed management option. It needs
 open-drain-style behavior: drive `SCL`/`SDA` low or release them with `uio_oe=0`,
@@ -107,7 +119,7 @@ instead of driving push-pull highs.
 | Opcode | Name | Behavior |
 | --- | --- | --- |
 | `000` | `STATUS` | Public status; `uio_out` selects capability, trace, op count, or error count. |
-| `001` | `GATE` | Unlock with `5'h1a`/`8'ha5`; relock with `5'h05`/`8'h5a`; enable UART with `5'h0e`/`8'hc7`; disable UART with `5'h0f`/`8'hc7`. |
+| `001` | `GATE` | Unlock with `ui_in[4:0]=5'h1a` and `uio_in=8'ha5`; relock with `5'h05` and `8'h5a`. |
 | `010` | `LOAD_A` | Protected operand A load from `uio_in`. |
 | `011` | `LOAD_B` | Protected operand B load from `uio_in`. |
 | `100` | `COMPUTE` | Protected ADD, MUL-low, MAX, ReLU, 2-lane nibble dot, or XOR. |
@@ -135,9 +147,10 @@ cd ttsky-compute-tile/test
 make
 ```
 
-The cocotb test covers reset status, locked rejection, unlock/relock, operand
-loads, ADD, all byte compute operations, compute disable, self-test, `uio_oe`
-direction, and the UART debug console on `ui_in[3]`/`uo_out[4]`.
+The cocotb test covers reset-held outputs, post-reset public status, locked
+rejection, unlock/relock, operand loads, ADD, all byte compute operations,
+compute disable, self-test, `uio_oe` direction, and all externally visible output
+lanes toggling high and low.
 
 Keep Tiny Tapeout-facing cocotb tests in `ttsky-compute-tile/test` so the template
 CI and hardening flow can run them. Keep parent-repo guard tests in

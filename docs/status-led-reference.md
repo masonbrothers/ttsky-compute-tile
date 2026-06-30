@@ -42,9 +42,6 @@ selects:
 For status LEDs, issue a `STATUS` command. For code/result LEDs, issue the
 specific command whose output you want to inspect.
 
-When UART mode is enabled, `uo_out[4]` is the UART TX line. Treat `L4` as serial
-TX activity/idle instead of status/result bit 4 until UART mode is disabled.
-
 ## Status Byte Layout
 
 Status byte bit order:
@@ -161,7 +158,6 @@ This sequence mirrors the cocotb test and is useful for LED-based inspection.
 | Disable compute and compute | `FAULT`, then `COMPUTE` | `0xe2` | `11100010` |
 | Clear fault and self-test | `FAULT`, then `SELF_TEST` | `0xc3` | `11000011` |
 | Relock | `GATE`, `imm=5'h05`, `uio_in=8'h5a` | `0x0f` | `00001111` |
-| Enable UART | `GATE`, `imm=5'h0e`, `uio_in=8'hc7` | `L4` becomes UART TX | TX idles high |
 
 ## Simulation Reference
 
@@ -172,5 +168,5 @@ uv run --with cocotb --with pytest make SIM=verilator
 ```
 
 The simulation checks the fixed error/self-test codes, representative compute
-results, locked rejection, unlock/relock behavior, `uio_oe` direction, and the
-UART console on `ui_in[3]`/`uo_out[4]`.
+results, locked rejection, unlock/relock behavior, `uio_oe` direction, and all
+externally visible output lanes toggling high and low.
