@@ -1,20 +1,54 @@
-<!---
-
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
-
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
-
 ## How it works
 
-Explain how your project works
+compute tile Smoke Island is a one-tile Tiny Tapeout bring-up design. It exposes a
+public status byte, a reset-locked protected command path, two byte operand
+registers, a byte result register, a trace checksum, cycle/op/error counters,
+fault controls, and a built-in self-test.
+
+The command byte is carried on `ui_in`. The high three bits select the opcode
+and the low five bits carry an immediate or read selector. `uo_out` returns the
+primary status/result byte. The bidirectional `uio` byte is host-to-design for
+write-style commands and design-to-host only for read-style commands, with
+`uio_oe=8'hff` when the design drives the lane.
+
+The canonical pin-mode plan is `docs/pinout-plan.md`. It records the current
+`ui_in`, `uo_out`, and `uio` byte-lane assignments plus the UART, SPI RAM, SPI
+target, QSPI, I2C, and LED/debug variants.
+The status/error/LED reference is `docs/status-led-reference.md`.
+
+This byte-lane smoke protocol intentionally does not share the bidirectional
+connector with external SPI RAM, QSPI flash/PSRAM, I2C, or UART Pmods. Those
+interfaces use overlapping Tiny Tapeout pinout conventions. A later
+memory-oriented revision should keep the standard `uio[0:3]` SPI RAM row:
+`CS`, `MOSI`, `MISO`, and `SCK`, with the `MISO` pin released by the design. A
+useful communication shape is a USB-to-RP2040-to-SPI mailbox: the demo-board
+microcontroller handles USB, exposes an SPI RAM-style command/result window,
+and the RTL only implements the SPI RAM-side protocol. A
+later UART console revision should use the demo-board UART-to-USB path on
+`ui_in[3]`/`uo_out[4]` or `ui_in[1]`/`uo_out[0]`.
+
+After reset, protected commands are rejected until the host sends the unlock
+sequence. The compute path supports ADD, MUL-low, MAX, ReLU, a two-lane unsigned
+nibble dot product, and XOR. This is not intended to be a product accelerator;
+it is a silicon proof point for command gating, deterministic compute,
+observability, and fault hooks.
 
 ## How to test
 
-Explain how to use your project
+1. Reset the design and read `STATUS` (`ui_in[7:5]=000`).
+2. Confirm `uio_out=8'h7f` for capability and the lock bit is clear.
+3. Try a protected read while locked and confirm `8'he1`.
+4. Unlock with `ui_in={3'b001,5'h1a}` and `uio_in=8'ha5`.
+5. Load operands with `LOAD_A` and `LOAD_B`.
+6. Run `COMPUTE` with the low three immediate bits selecting the operation.
+7. Read the result with `READ_RESULT`.
+8. Run `SELF_TEST` and confirm `8'hc3`.
+9. Relock with `ui_in={3'b001,5'h05}` and `uio_in=8'h5a`.
+
+The cocotb test in `test/test.py` automates this sequence and also checks that
+the bidirectional lane is only driven during read-style commands.
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+No external hardware is required beyond the Tiny Tapeout board and its normal
+clock/reset/control interface.
