@@ -1,6 +1,6 @@
 ## How it works
 
-compute tile Smoke Island is a one-tile Tiny Tapeout bring-up design. It exposes a
+Compute Tile Smoke Island is a one-tile Tiny Tapeout bring-up design. It exposes a
 public status byte, a reset-locked protected command path, two byte operand
 registers, a byte result register, a trace checksum, cycle/op/error counters,
 fault controls, and a built-in self-test.

@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "compute tile Smoke Island"      # Project title
-  author:       "Mason Brothers / AI ASIC compute tile"      # Your name
+  title:        "Compute Tile Smoke Island"      # Project title
+  author:       "Mason Brothers / AI ASIC Compute Tile"      # Your name
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "Tiny Tapeout bring-up island for a locked compute tile byte compute primitive"      # One line description of what your project does
+  description:  "Tiny Tapeout bring-up island for a locked Compute Tile byte-compute primitive"      # One line description of what your project does
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     1000000       # Clock frequency in Hz (or 0 if not applicable)
 

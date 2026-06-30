@@ -6,9 +6,9 @@ Date: 2026-06-30
 
 - Audience: RTL implementers, Tiny Tapeout submitters, firmware authors, and
   bring-up operators.
-- Purpose: define how compute tile uses Tiny Tapeout `ui_in`, `uo_out`, and `uio`
+- Purpose: define how the Compute Tile uses Tiny Tapeout `ui_in`, `uo_out`, and `uio`
   pins across the current smoke design and future UART/SPI/I2C/RAM variants.
-- Owner: accelerator/compute tile architecture.
+- Owner: accelerator/Compute Tile architecture.
 - Freshness trigger: update this document when `info.yaml`, `project.v`, the
   command protocol, UART/SPI/I2C transport RTL, RP2040 firmware assumptions, or
   Tiny Tapeout pinout recommendations change.
@@ -128,7 +128,7 @@ This is the preferred next transport for structured host communication and
 small RAM-like command/result buffers.
 
 The demo-board RP2040 handles USB and exposes an SPI RAM-style window. The
-compute tile RTL is the SPI master that polls or updates command/status/result slots.
+Compute Tile RTL is the SPI master that polls or updates command/status/result slots.
 
 | Pin | Direction from RTL | Signal | `uio_oe` |
 | --- | --- | --- | --- |

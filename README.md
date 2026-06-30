@@ -1,6 +1,6 @@
-# compute tile Smoke Island for Tiny Tapeout
+# Compute Tile Smoke Island for Tiny Tapeout
 
-This is a Tiny Tapeout SKY Verilog project for the first useful compute tile silicon
+This is a Tiny Tapeout SKY Verilog project for the first useful Compute Tile silicon
 experiment. It is intentionally a bring-up chiplet, not a small LLM accelerator:
 the value is in proving power/reset/clock, the public status path, a locked
 protected aperture, one byte-sized compute primitive, counters, trace, and fault
@@ -72,7 +72,7 @@ master on `uio[0:3]`: drive `CS`, `MOSI`, and `SCK`; sample `MISO`; and keep
 `uio_oe[2]=0`. That gives the demo-board RP2040 a USB-to-SPI path into the
 design without putting USB in the RTL. The practical shape is an SPI-RAM
 mailbox: host software talks USB to the RP2040, RP2040 firmware exposes a small
-SPI RAM window, and the compute tile RTL polls command/status/result slots over SPI.
+SPI RAM window, and the Compute Tile RTL polls command/status/result slots over SPI.
 
 UART-to-USB should be a separate serial-console variant using Tiny Tapeout's
 recommended pair `ui_in[3]` as RX and `uo_out[4]` as TX, or the alternate pair

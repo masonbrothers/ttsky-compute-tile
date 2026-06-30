@@ -75,7 +75,7 @@ async def test_project(dut):
     assert value(dut.uio_out) == LOCKED_ERR
     assert value(dut.uio_oe) == 0xFF
 
-    dut._log.info("Unlock, load operands, and run compute-tile-like byte ops")
+    dut._log.info("Unlock, load operands, and run Compute Tile-like byte ops")
     await cycle(dut, cmd(OPC_GATE, IMM_UNLOCK), KEY_UNLOCK)
     assert value(dut.uo_out) == 0x55
     assert value(dut.uio_oe) == 0x00

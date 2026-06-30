@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2026 accelerator/compute tile contributors
+ * Copyright (c) 2026 accelerator/Compute Tile contributors
  * SPDX-License-Identifier: Apache-2.0
  */
 
 `default_nettype none
 
-// Tiny Tapeout-sized compute tile bring-up island.
+// Tiny Tapeout-sized Compute Tile bring-up island.
 //
 // The interface is constrained by Tiny Tapeout:
 // - ui_in:   8-bit command/immediate byte.

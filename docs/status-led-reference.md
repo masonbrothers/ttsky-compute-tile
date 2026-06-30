@@ -7,7 +7,7 @@ Date: 2026-06-30
 - Audience: Tiny Tapeout bring-up operators, RTL implementers, and test authors.
 - Purpose: show what `uo_out[7:0]` means on the board LEDs for status reads,
   error codes, self-test codes, and common manual bring-up sequences.
-- Owner: accelerator/compute tile architecture.
+- Owner: accelerator/Compute Tile architecture.
 - Freshness trigger: update this document when `compute_tile_tiny_tapeout_core.v`,
   `info.yaml`, `docs/pinout-plan.md`, or the cocotb protocol test changes.
 

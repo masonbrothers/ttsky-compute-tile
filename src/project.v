@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 accelerator/compute tile contributors
+ * Copyright (c) 2026 accelerator/Compute Tile contributors
  * SPDX-License-Identifier: Apache-2.0
  */
 
